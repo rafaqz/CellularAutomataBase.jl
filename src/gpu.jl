@@ -41,7 +41,7 @@ struct CuGPU{X} <: GPU end
 CuGPU() = CuGPU{32}()
 
 function maprule!(
-    data::AbstractSimData, proc::GPU, opt, ruletype::Val{<:Rule}, rule, rkeys, wkeys
+    data::RuleData, proc::GPU, opt, ruletype::Val{<:Rule}, rule, rkeys, wkeys
 )
     backend = KernelAbstractions.get_backend(first(grids(data)))
     kernel! = ka_rule_kernel!(kernel_setup(proc)..., gridsize(first(grids(data))))
@@ -80,20 +80,20 @@ end
     dest(d)[I...] = x
 end
 
-function _maybemask!(
-    wgrid::GridData{<:GridMode,<:Tuple{Y,X}}, proc::GPU, mask::AbstractArray
-) where {Y,X}
-    mv = maskval(wgrid)
-    kernel! = ka_mask_kernel!(kernel_setup(proc)...)
-    kernel!(source(wgrid), mask, mv; ndrange=size(wgrid)) 
-    return nothing
+function _maybemask!(grid::GridData, proc::GPU, mask::AbstractArray)
+    mv = maskval(grid)
+    kernel! = ka_mask_kernel!(kernel_setup(proc)..., size(grid))
+    kernel!(source(grid), mask, mv) 
+    return grid
 end
 
 @kernel function ka_mask_kernel!(grid, mask, maskval)
     I = @index(Global, NTuple)
-    grid[I...] = mask[I...] ? grid[I...] : maskval
+    grid[I...] = mask[I[1], I[2]] ? grid[I...] : maskval
+    nothing
 end
 @kernel function ka_mask_kernel!(grid, mask, maskval::Nothing)
     I = @index(Global, NTuple)
-    grid[I...] = mask[I...] * grid[I...]
+    grid[I...] = mask[I[1], I[2]] * grid[I...]
+    nothing
 end

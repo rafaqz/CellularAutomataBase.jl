@@ -219,6 +219,26 @@ Stencils.switch(::PerformanceOpt, optdata) = optdata
 Stencils.after_update_boundary!(grid::GridData) = Stencils.after_update_boundary!(grid, opt(grid))
 Stencils.after_update_boundary!(grid::GridData, opt) = grid
 
+function Base.copy!(S::GridData{<:Any,R}, A::AbstractDimArray) where R
+    pad_axes = add_halo(S, axes(S))
+    copyto!(parent(parent(S)), CartesianIndices(pad_axes), A, CartesianIndices(A))
+    return
+end
+function Base.copy!(A::AbstractDimArray, S::GridData{<:Any,R}) where R
+    pad_axes = add_halo(S, axes(S))
+    copyto!(A, CartesianIndices(A), parent(S), CartesianIndices(pad_axes))
+    return A
+end
+function Base.copy!(dst::GridData{<:Any,RD}, src::GridData{<:Any,RS}) where {RD,RS}
+    dst_axes = add_halo(dst, axes(dst))
+    src_axes = add_halo(src, axes(src))
+    copyto!(
+        parent(dst), CartesianIndices(dst_axes),
+        parent(src), CartesianIndices(src_axes)
+    )
+    return dst
+end
+
 function Base.copyto!(dst::GridData, idst::CartesianIndices, src::GridData, isrc::CartesianIndices)
     dst_axes = add_halo(dst, idst)
     src_axes = add_halo(src, isrc)

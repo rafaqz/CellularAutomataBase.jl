@@ -17,8 +17,8 @@ such as another [`Grid`](@ref), an [`Aux`](@ref) array, or a [`Delay`](@ref).
 Other `source` objects are used as-is without indexing with `I`.
 """
 @propagate_inbounds Base.get(data::AbstractSimData, val, I...) = val
-@propagate_inbounds Base.get(data::AbstractSimData, key::ParameterSource, I::Integer...) =
-    get(data, key, I)
+@propagate_inbounds Base.get(data::AbstractSimData, key::ParameterSource, i::Integer, I::Integer...) =
+    get(data, key, (i, I...))
 @propagate_inbounds Base.get(data::AbstractSimData, key::ParameterSource, I::CartesianIndex) =
     get(data, key, Tuple(I))
 
@@ -64,6 +64,9 @@ _unwrap(::Type{<:Aux{X}}) where X = X
 
 @propagate_inbounds function Base.get(data::AbstractSimData, key::Aux, I::Tuple)
     _getaux(data, key, I)
+end
+@propagate_inbounds function Base.get(data::AbstractSimData, key::Aux)
+    aux(data, key)
 end
 
 # _getaux
@@ -140,19 +143,21 @@ function _calc_auxframe(A::AbstractDimArray, data, key)
     if !hasselection(timedim, Contains(curtime)) 
         if lookup(timedim) isa Cyclic
             if sampling(timedim) isa Points
-                throw(ArgumentError("Time dimension of aux `$key` has no valid selection for `Contains($curtime)`. Did you mean to use `Intervals` for the time dimension `sampling`? `Contains` on `Points` defaults to `At`, and must be exact."))
+                throw(ArgumentError("$(_no_valid_time(timedim,key, curtime)) Did you mean to use `Intervals` for the time dimension `sampling`? `Contains` on `Points` defaults to `At`, and must be exact."))
             else
-                throw(ArgumentError("Time dimension of aux `$key` has no valid selection for `Contains($curtime)`."))
+                throw(ArgumentError("$(_no_valid_time(timedim,key, curtime))"))
             end
         elseif sampling(timedim) isa Points
-            throw(ArgumentError("Time dimension of aux `$key` has no valid selection for `Contains($curtime)`. Did you mean to use `Intervals` for the time dimension `sampling`? `Contains` on `Points` defaults to `At`, and must be exact."))
+            throw(ArgumentError("$(_no_valid_time(timedim,key, curtime)) Did you mean to use `Intervals` for the time dimension `sampling`? `Contains` on `Points` defaults to `At`, and must be exact."))
         else
-            throw(ArgumentError("aux `$key` has no valid selection for `Contains($curtime)`. Did you mean to use a `Cyclic` lookup for the time dimension of the array?"))
+            throw(ArgumentError("$(_no_valid_time(timedim,key, curtime)) Did you mean to use a `Cyclic` lookup for the time dimension of the array?"))
         end
     end
     return DimensionalData.selectindices(timedim, Contains(curtime))
 end
 _calc_auxframe(args...) = nothing
+
+_no_valid_time(timedim, key, curtime) = "Time dimension over $(bounds(timedim)) of aux `$key` has no valid selection for `Contains($curtime)`."
 
 """
     Grid <: ParameterSource

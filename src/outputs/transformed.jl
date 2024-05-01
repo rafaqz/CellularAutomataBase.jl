@@ -31,12 +31,12 @@ function TransformedOutput(f::Function, init::Union{NamedTuple,AbstractMatrix}; 
     # We have to handle some things manually as we are changing the standard output frames
     extent = extent isa Nothing ? Extent(; init=init, kw...) : extent
     # Define buffers to copy to before applying `f`
-    buffer = init isa NamedTuple ? map(zero, init) : zero(init)
+    buffer = _replicate_init(init, replicates(extent))
     zeroframe = f(buffer)
     # Build simulation frames from the output of `f` for empty frames
     frames = [deepcopy(zeroframe) for f in eachindex(tspan(extent))]
     # Set the first frame to the output of `f` for `init`
-    frames[1] = f(init)
+    frames[1] = f(buffer)
 
     return TransformedOutput(frames, false, extent, f, buffer)
 end
@@ -52,28 +52,18 @@ function storeframe!(o::TransformedOutput, data::AbstractSimData)
     o[i] = _copytransformed!(o[i], transformed)
 end
 
+
+# Multi/named grid simulation, f is passed a NamedTuple
+_transform_grids(o::TransformedOutput, grids::NamedTuple) = o.f(grids)
+# Single unnamed grid simulation, f is passed an AbstractArray
+_transform_grids(o::TransformedOutput, grids::NamedTuple{(DEFAULT_KEY,)}) = o.f(first(grids))
+
 # Copy arrays manually as reducing functions can return the original object without copy.
 _copytransformed!(dest::NamedTuple, src::NamedTuple) = map(_copytransformed!, dest, src)
 _copytransformed!(dest::AbstractArray, src::AbstractArray) = dest .= src
 # Non-array output is just assigned
 _copytransformed!(dest, src) = src
 _copytransformed!(dest::StaticArray, src::StaticArray) = src
-
-# Multi/named grid simulation, f is passed a NamedTuple
-function _transform_grids(o::TransformedOutput, grids::NamedTuple)
-    # Make a new named tuple of raw arrays without wrappers, copying
-    # Often it's faster to copy than use a view when f is sum/mean etc.
-    nt = map(grids, o.buffer) do g, b
-        padding(g) isa Halo ? copy!(b, g) : source(g)
-    end
-    o.f(nt)
-end
-# Single unnamed grid simulation, f is passed an AbstractArray
-function _transform_grids(o::TransformedOutput, grids::NamedTuple{(DEFAULT_KEY,)})
-    g = first(grids)
-    A = padding(g) isa Halo ? copy!(o.buffer, g) : source(g)
-    o.f(A)
-end
 
 init_output_grids!(o::TransformedOutput, init) = nothing
 

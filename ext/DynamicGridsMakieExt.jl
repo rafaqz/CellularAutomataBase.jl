@@ -99,7 +99,6 @@ DynamicGrids.MakieOutput(init::Union{NamedTuple,AbstractArray}; kw...) =
 function DynamicGrids.MakieOutput(;
     frames, running, extent, ruleset,
     extrainit=Dict(),
-    throttle=0.1,
     interactive=true,
     figure=Figure(),
     layout=GridLayout(figure[1:4, 1]),
@@ -107,6 +106,7 @@ function DynamicGrids.MakieOutput(;
     f=_plot!,
     graphicconfig=nothing,
     simdata=nothing,
+    ncolumns=1,
     sim_kw=(;),
     slider_kw=(;),
     kw...
@@ -130,7 +130,7 @@ function DynamicGrids.MakieOutput(;
     slidergrid = GridLayout(inputgrid[2, 1])
     _add_control_widgets!(figure, controlgrid, output, simdata, ruleset, extrainit, sim_kw)
     if interactive
-        attach_sliders!(figure, ruleset; grid=slidergrid, throttle, slider_kw)
+        attach_sliders!(figure, ruleset; grid=slidergrid, ncolumns, slider_kw)
     end
 
     # Set up plot with the first frame
@@ -170,26 +170,15 @@ end
 
 # Widget buliding
 
-function attach_sliders!(f::Function, fig, model::AbstractModel; grid=fig, kw...)
-    attach_sliders!(fig, model; kw..., f=f)
+function attach_sliders!(f::Function, fig, model::AbstractModel; kw...)
+    attach_sliders!(fig, model; kw..., f)
 end
 function attach_sliders!(fig, model::AbstractModel;
-    ncolumns=nothing, submodel=Nothing, throttle=0.1, obs=nothing, f=identity,
-    slider_kw=(;), grid=GridLayout(fig[2, 1]),
+    ncolumns, slider_kw=(;), grid=GridLayout(fig[2, 1]),
 )
     length(DynamicGrids.params(model)) == 0 && return
 
-    slidergrid, slider_obs = param_sliders!(fig, model; grid, slider_kw)
-
-    # TODO: sliders in columns
-    # sliderbox = if submodel === Nothing
-        # objpercol = 3
-        # _in_columns(sliders, ncolumns, objpercol)
-    # else
-        # objpercol = 1
-        # sliders, slider_obs = group_sliders(f, model, submodel, obs, throttle)
-        # _in_columns(sliders, ncolumns, objpercol)
-    # end
+    slidergrid, slider_obs = param_sliders!(fig, model; grid, slider_kw, ncolumns)
 
     isnothing(slider_obs) && return nothing
 
@@ -208,10 +197,12 @@ function attach_sliders!(fig, model::AbstractModel;
     return slidergrid
 end
 
-function param_sliders!(fig, model::AbstractModel; grid=fig, throttle=0.1, slider_kw=(;))
+function param_sliders!(fig, model::AbstractModel; grid=fig, ncolumns, slider_kw=(;))
+    @show DynamicGrids.params(model) ncolumns
     length(DynamicGrids.params(model)) == 0 && return nothing, nothing
 
     model1 = Model(parent(model))
+
     labels = if haskey(model1, :label)
         map(model1[:label], model1[:fieldname]) do n, fn
             n === nothing ? fn : n
@@ -227,18 +218,45 @@ function param_sliders!(fig, model::AbstractModel; grid=fig, throttle=0.1, slide
     else
         _makerange.(Ref(nothing), values)
     end
-
     descriptions = if haskey(model, :description)
         model[:description]
     else
         map(x -> "", values)
     end
-
+    @show values labels
     # TODO Set mouse hover text
     # attributes = map(model[:component], labels, descriptions) do p, n, d
     #     desc = d == "" ? "" : string(": ", d)
     #     Dict(:title => "$p.$n $desc")
     # end
+    #
+    #ovalues, labels, ranges, descriptions
+    slider_vals = (; values, labels, ranges, descriptions)
+
+    if ncolumns > 1 
+        inner_grid = GridLayout(grid[1, 1])
+        nsliders = length(values)
+        colsize = ceil(Int, nsliders / ncolumns)
+        ranges = map(1:ncolumns) do i
+            b = colsize * (i - 1) + 1
+            e = min(b + colsize - 1, nsliders)   
+            b:e
+        end
+        @show nsliders colsize ranges
+        obs = mapreduce(vcat, enumerate(ranges)) do (i, r)
+            col_slider_vals = map(x -> x[r], slider_vals)
+            _, col_obs = _param_sliders!(fig, i; grid=inner_grid, slider_kw, col_slider_vals...)
+            col_obs
+        end
+        return inner_grid, obs
+    else
+        return _param_sliders!(fig, 1; grid, slider_kw, slider_vals...)
+    end
+end
+
+function _param_sliders!(fig, i; 
+    grid, slider_kw, values, labels, ranges, descriptions
+)
 
     height = 8
     slider_specs = map(values, labels, ranges) do startvalue, l, range
@@ -249,7 +267,7 @@ function param_sliders!(fig, model::AbstractModel; grid=fig, throttle=0.1, slide
     map(sg.labels, sg.valuelabels) do l, vl
         l.height[] = vl.height[] = height
     end
-    grid[1, 1] = sg
+    grid[1, i] = sg
 
     slider_obs = map(x -> x.value, sg.sliders)
 

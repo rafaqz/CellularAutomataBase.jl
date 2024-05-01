@@ -106,7 +106,7 @@ Additional methods not found in [`AbstractSimData`](@ref):
 - `rules(d::SimData)` : get the simulation rules.
 - `ruleset(d::SimData)` : get the simulation [`AbstractRuleset`](@ref).
 """
-struct SimData{S<:Tuple,N,G<:NamedTuple,E,RS,F,CF,AF} <: AbstractSimData{S,N,G}
+struct SimData{S<:Tuple,N,G<:NamedTuple{<:Any,<:Tuple{<:GridData,Vararg{<:GridData}}},E,RS,F,CF,AF} <: AbstractSimData{S,N,G}
     grids::G
     extent::E
     ruleset::RS
@@ -190,18 +190,23 @@ function _buildgrids(extent, ruleset, s::Val, radii::NamedTuple)
     end
 end
 function _buildgrids(extent, ruleset, ::Val{S}, ::Val{R}, init, padval) where {S,R}
-    hood = Window{R}() 
-    pad = Halo{:out}() # We always pad out in DynamicGrids - it should pay back for multiple time steps
-    bc = _boundary(boundary(ruleset), padval)
+    stencil = Window{R}() 
+    padding = Halo{:out}() # We always pad out in DynamicGrids - it should pay back for multiple time steps
+    bc = _update_padval(boundary(ruleset), padval)
     data = _replicate_init(init, replicates(extent))
+    m = if isnothing(mask(extent))
+        nothing
+    else
+        Stencils.StencilArray(mask(extent), stencil; padding, boundary=bc)
+    end
     GridData{ReadMode,S,R}(
-        data, hood, bc, pad, proc(ruleset), opt(ruleset), mask(extent), padval, replicates(extent)
+        data, stencil, bc, padding, proc(ruleset), opt(ruleset), m, padval, replicates(extent)
     )
 end
 
-_boundary(::Wrap, padval) = Wrap()
-_boundary(::Remove, padval) = Remove(padval)
-_boundary(::Use, padval) = Use()
+_update_padval(::Wrap, padval) = Wrap()
+_update_padval(::Remove, padval) = Remove(padval)
+_update_padval(::Use, padval) = Use()
 
 ConstructionBase.constructorof(::Type{<:SimData{S,N}}) where {S,N} = SimData{S,N}
 
@@ -253,9 +258,28 @@ function RuleData(d::AbstractSimData{S,N};
     value=nothing, 
     indices=nothing,
 ) where {S,N}
-    return RuleData{S,N}(
+    RuleData{S,N}(
         grids, extent, settings, frames, currentframe, auxframe, replicates, value, indices
     )
+end
+# Thin down the aux data for just this rule.
+# This may help keep GPU kernel parameter size under limits
+function RuleData(d::AbstractSimData, rule::Rule)
+    aux_in_rule = Flatten.flatten(rule, Aux)
+    rule_aux_keys = map(aux_in_rule) do aux
+        _unwrap(aux)
+    end
+    if isnothing(aux(d))
+        if length(rule_aux_keys) > 0
+            throw(ArgumentError("no aux data available: expected aux with keys $rule_aux_keys"))
+        end
+        return RuleData(d)
+    end
+    rule_aux = aux(d)[rule_aux_keys]
+    # Update the extent to have less aux
+    rule_extent = ConstructionBase.setproperties(extent(d), (; aux=rule_aux))
+    # Use the thinned rule extent in RuleData
+    return RuleData(d; extent=rule_extent)
 end
 
 function Base.getindex(d::RuleData, key::Symbol) 

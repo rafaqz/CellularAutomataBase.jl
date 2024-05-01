@@ -11,58 +11,61 @@ maprule!(data::AbstractSimData, rule) =
     maprule!(data, _val_ruletype(rule), rule)
 
 # CellRule
-function maprule!(data::AbstractSimData, ruletype::Val{<:CellRule}, rule)
-    rkeys, _ = _getreadgrids(rule, data)
-    wkeys, _ = _getwritegrids(WriteMode, rule, data)
-    maprule!(RuleData(data), ruletype, rule, rkeys, wkeys)
-    return data
+function maprule!(simdata::AbstractSimData, ruletype::Val{<:CellRule}, rule)
+    rkeys, _ = _getreadgrids(rule, simdata)
+    wkeys, _ = _getwritegrids(WriteMode, rule, simdata)
+    ruledata = RuleData(simdata, rule)
+    maprule!(ruledata, ruletype, rule, rkeys, wkeys)
+    # Not swictch required
+    return simdata
 end
 
 # NeighborhoodRule
-function maprule!(data::AbstractSimData, ruletype::Val{<:NeighborhoodRule}, rule)
-    rkeys, rgrids = _getreadgrids(rule, data)
-    wkeys, wgrids = _getwritegrids(SwitchMode, rule, data)
+function maprule!(simdata::AbstractSimData, ruletype::Val{<:NeighborhoodRule}, rule)
+    rkeys, rgrids = _getreadgrids(rule, simdata)
+    wkeys, wgrids = _getwritegrids(SwitchMode, rule, simdata)
     # Copy or zero out boundary where needed
     _update_boundary!(rgrids)
-    _cleardest!(data[stencilkey(rule)])
-    maprule!(RuleData(data), ruletype, rule, rkeys, wkeys)
-    _maybemask!(wgrids)
+    _cleardest!(simdata[stencilkey(rule)])
+    ruledata = RuleData(simdata, rule)
+    maprule!(ruledata, ruletype, rule, rkeys, wkeys)
     # Swap the dest/source of grids that were written to
     # and combine the written grids with the original simdata
-    new_rgrids = _to_readonly(_switch(wgrids))
-    d =  _replacegrids(data, wkeys, new_rgrids)
-    return d
+    final_rgrids = _to_readonly(_switch(wgrids))
+    return _replacegrids(simdata, wkeys, final_rgrids)
 end
 
 # SetRule
-function maprule!(data::AbstractSimData, ruletype::Val{<:SetRule}, rule)
-    rkeys, _ = _getreadgrids(rule, data)
-    wkeys, wgrids = _getwritegrids(SwitchMode, rule, data)
+function maprule!(simdata::AbstractSimData, ruletype::Val{<:SetRule}, rule)
+    rkeys, _ = _getreadgrids(rule, simdata)
+    wkeys, wgrids = _getwritegrids(SwitchMode, rule, simdata)
     map(_astuple(wkeys, wgrids)) do g
         copyto!(parent(dest(g)), parent(source(g)))
     end
-    ruledata = RuleData(_combinegrids(data, wkeys, wgrids))
+    ruledata = RuleData(_combinegrids(simdata, wkeys, wgrids), rule)
     maprule!(ruledata, ruletype, rule, rkeys, wkeys)
-    _maybemask!(wgrids)
-    return _replacegrids(data, wkeys, _to_readonly(_switch(wgrids)))
+    # We have to mask after SetRule
+    final_grids = _maybemask!(_to_readonly(_switch(wgrids)))
+    return _replacegrids(simdata, wkeys, final_grids)
 end
 
 _switch(xs::Tuple) = map(switch, xs)
 _switch(x) = switch(x)
 
 # SetGridRule
-function maprule!(data::AbstractSimData, ruletype::Val{<:SetGridRule}, rule)
-    rkeys, rgrids = _getreadgrids(rule, data)
-    wkeys, wgrids = _getwritegrids(WriteMode, rule, data)
-    ruledata = RuleData(_combinegrids(data, wkeys, wgrids))
+function maprule!(simdata::AbstractSimData, ruletype::Val{<:SetGridRule}, rule)
+    rkeys, rgrids = _getreadgrids(rule, simdata)
+    wkeys, wgrids = _getwritegrids(WriteMode, rule, simdata)
+    ruledata = RuleData(_combinegrids(simdata, wkeys, wgrids), rule)
     # Run the rule
     applyrule!(ruledata, rule)
-    return data
+    # We don't mask here or do anything, its on the user
+    return simdata
 end
 
 # Expand method arguments for dispatch on processor and optimisation
-function maprule!(data::AbstractSimData, ruletype::Val, rule, rkeys, wkeys)
-    maprule!(data, proc(data), opt(data), ruletype, rule, rkeys, wkeys)
+function maprule!(ruledata::RuleData, ruletype::Val, rule, rkeys, wkeys)
+    maprule!(ruledata, proc(ruledata), opt(ruledata), ruletype, rule, rkeys, wkeys)
 end
 
 _update_boundary!(gs::Union{NamedTuple,Tuple}) = map(_update_boundary!, gs)
@@ -70,20 +73,20 @@ _update_boundary!(g::GridData) = update_boundary!(g)
 
 # Most Rules
 # 2 dimensional, with processor selection and optimisations in `map_with_optimisation`
-function maprule!(data::AbstractSimData{<:Any,<:Tuple{Y,X}}, proc::CPU, opt, ruletype::Val, rule, rkeys, wkeys) where {Y,X}
-    let data=data, proc=proc, opt=opt, rule=rule,
+function maprule!(ruledata::RuleData{<:Any,<:Tuple{Y,X}}, proc::CPU, opt, ruletype::Val, rule, rkeys, wkeys) where {Y,X}
+    let ruledata=ruledata, proc=proc, opt=opt, rule=rule,
         rkeys=rkeys, wkeys=wkeys, ruletype=ruletype
-        map_with_optimisation(data, proc, opt, ruletype, rkeys) do I 
+        map_with_optimisation(ruledata, proc, opt, ruletype, rkeys) do I 
             cell_kernel!(data, ruletype, rule, rkeys, wkeys, I...)
         end
     end
 end
 # Arbitrary dimensions, no processor or optimisation selection beyond CPU/GPU
-function maprule!(data::AbstractSimData, proc::CPU, opt, ruletype::Val, rule, rkeys, wkeys)
-    let data=data, proc=proc, opt=opt, rule=rule,
+function maprule!(ruledata::RuleData, proc::CPU, opt, ruletype::Val, rule, rkeys, wkeys)
+    let ruledata=ruledata, proc=proc, opt=opt, rule=rule,
         rkeys=rkeys, wkeys=wkeys, ruletype=ruletype
-        for I in CartesianIndices(first(grids(data)))
-            cell_kernel!(data, ruletype, rule, rkeys, wkeys, Tuple(I)...)
+        for I in CartesianIndices(first(grids(ruledata)))
+            cell_kernel!(ruledata, ruletype, rule, rkeys, wkeys, Tuple(I)...)
         end
     end
 end
@@ -111,7 +114,7 @@ end
 # end
 # Arbitrary dimensions, no processor or optimisation selection beyond CPU/GPU
 function maprule!(
-    data::AbstractSimData, proc::SingleCPU, opt, ruletype::Val{<:NeighborhoodRule}, rule, rkeys, wkeys
+    data::RuleData, proc::SingleCPU, opt, ruletype::Val{<:NeighborhoodRule}, rule, rkeys, wkeys
 )
     hoodgrid = _firstgrid(data, rkeys)
     for I in CartesianIndices(hoodgrid) 
@@ -120,11 +123,10 @@ function maprule!(
     return nothing
 end
 function maprule!(
-    data::AbstractSimData, proc::ThreadedCPU, opt, ruletype::Val{<:NeighborhoodRule}, rule, rkeys, wkeys
+    data::RuleData, proc::ThreadedCPU, opt, ruletype::Val{<:NeighborhoodRule}, rule, rkeys, wkeys
 )
     hoodgrid = _firstgrid(data, rkeys)
-    # map_with_optimisation(data, proc, opt, ruletype, rkeys) do I
-    Threads.@threads :static for I in CartesianIndices(hoodgrid) 
+    map_with_optimisation(data, proc, opt, ruletype, rkeys) do I
         stencil_kernel!(data, hoodgrid, ruletype, rule, rkeys, wkeys, Tuple(I)...)
     end
     return nothing
@@ -286,36 +288,19 @@ _to_readonly(data::GridData) = GridData{ReadMode}(data)
 
 # _maybemask!
 # mask the source grid with the `mask` array, if it exists
-_maybemask!(wgrids::Union{Tuple,NamedTuple}) = map(_maybemask!, wgrids)
-_maybemask!(wgrid::GridData) = _maybemask!(wgrid, proc(wgrid), mask(wgrid))
-_maybemask!(wgrid::GridData, proc, mask::Nothing) = nothing
-function _maybemask!(
-    wgrid::GridData{<:GridMode,<:Tuple{I,J}}, proc::CPU, mask::AbstractArray
-) where {I,J}
-    A = source(wgrid)
-    mv = maskval(wgrid)
-    map_on_processor(proc, wgrid, 1:J) do j
-        if isnothing(mv) || mv == zero(eltype(wgrid))
-            @simd for i in 1:I
-                A[i, j] *= mask[i, j]
-            end
-        else
-            @simd for i in 1:I
-                A[i, j] = mask[i, j] ? A[i, j] : mv
-            end
-        end
-    end
-end
-function _maybemask!(
-    wgrid::GridData{<:GridMode}, proc, mask::AbstractArray
-)
-    A = source(wgrid)
-    mv = maskval(wgrid)
+_maybemask!(grids::Union{Tuple,NamedTuple}) = map(_maybemask!, grids)
+_maybemask!(grid::GridData) = _maybemask!(grid, proc(grid), mask(grid))
+_maybemask!(grid::GridData, proc, mask::Nothing) = nothing
+function _maybemask!(grid::GridData, proc::CPU, mask::AbstractArray)
+    mv = maskval(grid)
+    # `mask` is also a padded StencilArray
+    # so we mask the whole thing to take care of the edges
     if isnothing(mv) || iszero(mv)
-        source_array_or_view(wgrid) .*= mask
+        source(grid) .*= parent(mask)
     else
-        A .= ((a, m) -> m ? a : mv).(A, mask)
+        source(grid) .= ((a, m) -> m ? a : mv).(source(grid), parent(mask))
     end
+    return grid
 end
 
 # _cleardest!

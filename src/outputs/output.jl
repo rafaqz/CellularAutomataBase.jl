@@ -21,6 +21,26 @@ function (::Type{T})(
     T(; frames, running=false, extent=extent, kw...)
 end
 
+function Base.summary(io::IO, A::Output)
+    DimensionalData.print_ndims(io, size(A))
+    print(io, string(nameof(typeof(A))))
+    DimensionalData.print_name(io, name(A))
+end
+
+function DimensionalData.show_after(io::IO, mime, A::Output)
+    blockwidth = get(io, :blockwidth, 0)
+    DimensionalData.print_block_close(io, blockwidth)
+    ndims(A) > 0 && println(io)
+    if eltype(A) <: NamedTuple
+        simplified_grids = map(A) do f
+            DimensionalData.ShowWith(join(map((k, v) -> "$k=$(nameof(typeof(v)))", keys(f), values(f)), ", "))
+        end
+        DimensionalData.print_array(io, mime, simplified_grids)
+    else
+        DimensionalData.print_array(io, mime, A)
+    end
+end
+
 # Forward base methods to the frames array
 Base.parent(o::Output) = frames(o)
 Base.length(o::Output) = length(parent(o))

@@ -29,7 +29,7 @@ Type-stability can give orders of magnitude improvements in performance.
 """
 isinferred(args...) = demo(Infer(), args...)
 
-descendable(sd::AbstractSimData) = demo(Descend(), sd)
+descendable(args...) = demo(Descend(), args...)
 
 demo(m::DemoMode, output::Output, rules::Rule...) = demo(m, output, rules)
 demo(m::DemoMode, output::Output, rules::Tuple) = demo(m, output, StaticRuleset(rules...))
@@ -38,7 +38,7 @@ function demo(m, output::Output, ruleset::StaticRuleset)
     simdata = _updaterules(rules(ruleset), SimData(output, ruleset))
     return _demo(m, simdata)
 end
-function demo(m::DemoMode, simdata::AbstractSimData)
+@noinline function demo(m::DemoMode, simdata::AbstractSimData)
     # sd = _updaterules(rules(simdata), simdata)
     _demo(m, simdata)
 end
@@ -51,7 +51,7 @@ end
         end
     end |> all
 end
-function _demo(m::DemoMode, ruledata::RuleData{<:Any,N}, 
+@noinline function _demo(m::DemoMode, ruledata::RuleData{<:Any,N}, 
    rule, ruletype::Val{<:Union{<:NeighborhoodRule,<:Chain{<:Any,<:Any,<:Tuple{<:NeighborhoodRule,Vararg}}}}
 ) where N
     hoodgrid = ruledata[stencilkey(rule)]
@@ -69,7 +69,7 @@ function _demo(m::DemoMode, ruledata::RuleData{<:Any,N},
     end
     return true
 end
-function _demo(m::DemoMode, ruledata::RuleData{<:Any,N}, rule, ruletype::Val{<:CellRule}) where N
+@noinline function _demo(m::DemoMode, ruledata::RuleData{<:Any,N}, rule, ruletype::Val{<:CellRule}) where N
     rkeys, rgrids = _getreadgrids(rule, ruledata)
     wkeys, wgrids = _getwritegrids(WriteMode, rule, ruledata)
     ruledata = @set ruledata.grids = _combinegrids(rkeys, rgrids, wkeys, wgrids)
@@ -80,11 +80,11 @@ function _demo(m::DemoMode, ruledata::RuleData{<:Any,N}, rule, ruletype::Val{<:C
         typeof(writeval) == typeof(example_writeval) ||
             error("return type `$(typeof(writeval))` doesn't match grid types `$(typeof(example_writeval))`")
     else
-        cell_kernel!(ruledata, ruletype, rule1, rkeys, wkeys, I...)
+        cell_kernel!(ruledata, ruletype, rule, rkeys, wkeys, I...)
     end
     return true
 end
-function _demo(m::DemoMode, ruledata::RuleData{<:Any,N}, rule, ruletype::Val{<:SetCellRule}) where N
+@noinline function _demo(m::DemoMode, ruledata::RuleData{<:Any,N}, rule, ruletype::Val{<:SetRule}) where N
     rkeys, rgrids = _getreadgrids(rule, ruledata)
     wkeys, wgrids = _getwritegrids(WriteMode, rule, ruledata)
     ruledata = @set ruledata.grids = _combinegrids(rkeys, rgrids, wkeys, wgrids)
