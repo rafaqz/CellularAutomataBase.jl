@@ -5,17 +5,44 @@ using DynamicGrids, Makie
 const MAX_COLUMNS = 3
 const DG = DynamicGrids
 
+"""
+    MakieSim
+
+## Fields
+
+- `figure`: A Makie.jl `Figure`
+- `layout`: A Makie.jl `GridLayout`
+- `frame`: An Obersevables.jl `Observable` holding a single Array for 
+    a basic simulation, or a `NamedTuple` of `Array` for a multi-grid simulation.
+- `time`: An Observables.jl `Observable` holding a `String` showing the current 
+    time/date etc in the simulation.
+
+Usally these fields ill be accessed with property destructuring:
+
+```julia
+output = MakieOutput(rand(Bool, 200, 300); tspan=1:10, ruleset=Ruleset(life)) do (; layout, frame, time)
+    ax = Axis(layout[1, 2])
+    heatmap!(ax, frame)
+end
+```
+
+Where the `do (; layout, frame, time)` is putting the `layout`, `frame` and `time` 
+fields into variables of the same name. See the `MakieOutput` docs for full examples.
+
+Makie functions `plot!`, `heatmap!`, `image!` and `contour!` can all be 
+called directly on a `MakieSim` object, with all the usual keywords allowed.
+"""
 struct MakieSim
     figure::Figure
     layout::GridLayout
-    frame::Observable
+    frame::Union{Observable,NamedTuple}
     time::Observable
 end
 
-for f in (:plot!, :heatmap!, :image!, :contour!, :contourf!)
+for f in (:plot!, :heatmap!, :image!, :contour!)
     @eval function Makie.$f(x::MakieSim; kw...)
         axis = Axis(x.layout[1, 1])
-        if x.frame[] isa AbstractArray
+        if x.frame isa Observable
             Makie.$f(axis, x.frame; kw...)
         else
             A = lift(x.frame) do f
@@ -36,27 +63,32 @@ An output that is displayed using Makie.jl.
 
 # Arguments:
 
-- `f`: a function that plots a simulation frame into a layout. It is passed three arguments:
-    `layout`, `frame` and `tstep` where layout is a `GridLayout` or whatever was passed to
-    the `layout` keyword. `frames` are an observable of an object matching `init` that will
-    be filled will values and updated as the simulation progresses. `tstep` is an observable
-    of the timestep of the simulation, updated as it runs. If no function is passed, `image!`
-    is used with a new `Axis` and the first layer of the simulation frame.
+- `f`: a function that plots a simulation frame into a layout. It is passed one argument, 
+    a [`MakieSim`](@ref) object, which has `figure`, `layout`, `frame`, and `time` fields.
+    Where `figure` is a Makie `Figure`, and `layout` is a `GridLayout` or whatever was passed 
+    to the `layout` keyword. `frames` is an observable of an object matching `init` that will
+    be filled will values and updated as the simulation progresses. `time` is an observable
+    of the current time of the simulation as a string, updated as it runs. 
+    If no function is passed, `heatmap!` is used with a new `Axis` and the first layer of the simulation frame.
+    Makie.jl functions `plot!`, `heatmap!`, `image!`, `contour!` will all work here. `image!`
+    has the best performance, but may need a manual `colormap` keyword and `interpolate=false` to look good.
 - `init`: initialisation `AbstractArray` or `NamedTuple` of `AbstractArray`.
 
 # Keywords
+
 - `ruleset`: a `Ruleset` to use in simulations
 - `extrainit`: A `Dict{String,Any}` of alternate `init` objects that can be selected in the interface.
-- `fig`: a makie `Figure`, `Figure()` by default.
+- `figure`: a makie `Figure`, `Figure()` by default.
 - `layout`: a makie layout, `GridLayout(fig[1:4, 1])` by default.
-- `inputgrid`: a makie layout to hold controls `GridLayout(fig[5, 1])` by default.
+- `inputlayout`: a makie layout to hold controls `GridLayout(fig[5, 1])` by default.
 - `sim_kw`: keywords to pass to `sim!`.
+- `ncolumns`: the number of columns to split sliders into.
 $(DynamicGrids.GRAPHICOUTPUT_KEYWORDS)
 
 life = Life()
-output = MakieOutput(rand(Bool, 200, 300); tspan=1:10, ruleset=Ruleset(life)) do layout, frame, t
+output = MakieOutput(rand(Bool, 200, 300); tspan=1:10, ruleset=Ruleset(life)) do (; layout, frame, time)
     axis = Axis(layout[1, 1])
-    image!(axis, frame; )
+    image!(axis, frame; interpolate=false)
 end
 
 
@@ -75,11 +107,24 @@ tspan = 1:100
 output = MakieOutput(rand(Bool, 200, 300); tspan, ruleset, fps=10)
 
 # Create our own plots with Makie.jl
-output = MakieOutput(rand(Bool, 200, 300); tspan, ruleset) do layout, frame, t
+output = MakieOutput(rand(Bool, 200, 300); tspan, ruleset) do (; layout, frame)
     image!(Axis(layout[1, 1]), frame; interpolate=false, colormap=:inferno)
 end
-
 ```
+
+If you have a multi-frame simulation, you will need to plot specific frames:
+
+```julia
+output = MakieOutput(rand(Bool, 200, 300); tspan, ruleset) do (; layout, frame)
+    ax1 = Axis(layout[1, 1])
+    ax2 = Axis(layout[1, 2])
+    Makie.image!(ax1, frame.my_first_grid; my_kw...)
+    Makie.image!(ax2, frame.my_second_grid; my_kw...)
+end
+```
+
+Each of the grids is its own observable holding an array, 
+that you can plot directly with `image!` or `heatmap!`.
 """
 function DynamicGrids.MakieOutput(f::Function, init::Union{NamedTuple,AbstractArray}; extent=nothing, store=false, kw...)
     # We have to handle some things manually as we are changing the standard output frames
@@ -102,8 +147,8 @@ function DynamicGrids.MakieOutput(;
     interactive=true,
     figure=Figure(),
     layout=GridLayout(figure[1:4, 1]),
-    inputgrid=GridLayout(figure[5, 1]),
-    f=_plot!,
+    inputlayout=GridLayout(figure[5, 1]),
+    f=heatmap!,
     graphicconfig=nothing,
     simdata=nothing,
     ncolumns=1,
@@ -116,7 +161,13 @@ function DynamicGrids.MakieOutput(;
     end
     # Observables that update during the simulation
     t_obs = Observable{Int}(1)
-    frame_obs = Observable{Any}(nothing)
+    frame_obs = if extent.init isa Array
+        Observable{Any}(nothing)
+    else
+        map(extent.init) do _
+            Observable{Any}(nothing)
+        end
+    end
 
     # Page and output construction
     output = MakieOutput(
@@ -126,18 +177,20 @@ function DynamicGrids.MakieOutput(;
     simdata = DynamicGrids.SimData(simdata, output, extent, ruleset)
 
     # Widgets
-    controlgrid = GridLayout(inputgrid[1, 1])
-    slidergrid = GridLayout(inputgrid[2, 1])
-    _add_control_widgets!(figure, controlgrid, output, simdata, ruleset, extrainit, sim_kw)
+    controllayout = GridLayout(inputlayout[1, 1])
+    sliderlayout = GridLayout(inputlayout[2, 1])
+    _add_control_widgets!(figure, controllayout, output, simdata, ruleset, extrainit, sim_kw)
     if interactive
-        attach_sliders!(figure, ruleset; grid=slidergrid, ncolumns, slider_kw)
+        attach_sliders!(figure, ruleset; layout=sliderlayout, ncolumns, slider_kw)
     end
 
     # Set up plot with the first frame
     if keys(simdata) == (:_default_,)
         frame_obs[] = DynamicGrids.gridview(first(DynamicGrids.grids(simdata)))
     else
-        frame_obs[] = map(DynamicGrids.gridview, DynamicGrids.grids(simdata))
+        map(frame_obs, DynamicGrids.grids(simdata)) do obs, grid
+            obs[] = DynamicGrids.gridview(grid)
+        end
     end
 
     f(MakieSim(figure, layout, frame_obs, t_obs))
@@ -157,12 +210,13 @@ function DynamicGrids.showframe(frame::NamedTuple, o::MakieOutput, data)
         if keys(frame) == (:_default_,)
             o.frame_obs[] = first(frame)
         else
-            o.frame_obs[] = frame
+            map(setindex!, o.frame_obs, frame)
         end
         o.t_obs[] = DG.currentframe(data)
         notify(o.t_obs)
     catch e
-        println(stdout, String(e)[1:10])
+        show(stdout, MIME"text/plain", e)
+        DynamicGrids.setrunning!(o, false)
     end
     return nothing
 end
@@ -174,11 +228,11 @@ function attach_sliders!(f::Function, fig, model::AbstractModel; kw...)
     attach_sliders!(fig, model; kw..., f)
 end
 function attach_sliders!(fig, model::AbstractModel;
-    ncolumns, slider_kw=(;), grid=GridLayout(fig[2, 1]),
+    ncolumns, slider_kw=(;), layout=GridLayout(fig[2, 1]),
 )
     length(DynamicGrids.params(model)) == 0 && return
 
-    slidergrid, slider_obs = param_sliders!(fig, model; grid, slider_kw, ncolumns)
+    sliderlayout, slider_obs = param_sliders!(fig, model; layout, slider_kw, ncolumns)
 
     isnothing(slider_obs) && return nothing
 
@@ -194,10 +248,10 @@ function attach_sliders!(fig, model::AbstractModel;
         end
     end
 
-    return slidergrid
+    return sliderlayout
 end
 
-function param_sliders!(fig, model::AbstractModel; grid=fig, ncolumns, slider_kw=(;))
+function param_sliders!(fig, model::AbstractModel; layout=fig, ncolumns, slider_kw=(;))
     @show DynamicGrids.params(model) ncolumns
     length(DynamicGrids.params(model)) == 0 && return nothing, nothing
 
@@ -234,7 +288,7 @@ function param_sliders!(fig, model::AbstractModel; grid=fig, ncolumns, slider_kw
     slider_vals = (; values, labels, ranges, descriptions)
 
     if ncolumns > 1 
-        inner_grid = GridLayout(grid[1, 1])
+        inner_layout = GridLayout(layout[1, 1])
         nsliders = length(values)
         colsize = ceil(Int, nsliders / ncolumns)
         ranges = map(1:ncolumns) do i
@@ -245,17 +299,17 @@ function param_sliders!(fig, model::AbstractModel; grid=fig, ncolumns, slider_kw
         @show nsliders colsize ranges
         obs = mapreduce(vcat, enumerate(ranges)) do (i, r)
             col_slider_vals = map(x -> x[r], slider_vals)
-            _, col_obs = _param_sliders!(fig, i; grid=inner_grid, slider_kw, col_slider_vals...)
+            _, col_obs = _param_sliders!(fig, i; layout=inner_layout, slider_kw, col_slider_vals...)
             col_obs
         end
-        return inner_grid, obs
+        return inner_layout, obs
     else
-        return _param_sliders!(fig, 1; grid, slider_kw, slider_vals...)
+        return _param_sliders!(fig, 1; layout, slider_kw, slider_vals...)
     end
 end
 
 function _param_sliders!(fig, i; 
-    grid, slider_kw, values, labels, ranges, descriptions
+    layout, slider_kw, values, labels, ranges, descriptions
 )
 
     height = 8
@@ -267,7 +321,7 @@ function _param_sliders!(fig, i;
     map(sg.labels, sg.valuelabels) do l, vl
         l.height[] = vl.height[] = height
     end
-    grid[1, i] = sg
+    layout[1, i] = sg
 
     slider_obs = map(x -> x.value, sg.sliders)
 
@@ -275,20 +329,20 @@ function _param_sliders!(fig, i;
 end
 
 function _add_control_widgets!(
-    fig, grid, o::Output, simdata::AbstractSimData, ruleset::Ruleset, extrainit, sim_kw
+    fig, layout, o::Output, simdata::AbstractSimData, ruleset::Ruleset, extrainit, sim_kw
 )
     # We use the init dropdown for the simulation init, 
     # even if we don't show the dropdown because it only has 1 option.
     extrainit[:init] = deepcopy(DynamicGrids.init(o))
 
     # Buttons
-    grid[1, 1] = sim = Button(fig; label="sim")
-    grid[1, 2] = resume = Button(fig; label="resume")
-    grid[1, 3] = stop = Button(fig; label="stop")
-    grid[1, 4] = fps_slider = Slider(fig; range=1:200, startvalue=DynamicGrids.fps(o))
-    grid[1, 5] = init_dropdown = Menu(fig; options=Tuple.(collect(pairs(extrainit))), prompt="Choose init...")
-    grid[2, 1:4] = time_slider = Slider(fig; startvalue=o.t_obs[], range=(1:length(DG.tspan(o))), horizontal=true)
-    grid[2, 5] = time_display = Textbox(fig; stored_string=string(first(DG.tspan(o))))
+    layout[1, 1] = sim = Button(fig; label="sim")
+    layout[1, 2] = resume = Button(fig; label="resume")
+    layout[1, 3] = stop = Button(fig; label="stop")
+    layout[1, 4] = fps_slider = Slider(fig; range=1:200, startvalue=DynamicGrids.fps(o))
+    layout[1, 5] = init_dropdown = Menu(fig; options=Tuple.(collect(pairs(extrainit))), prompt="Choose init...")
+    layout[2, 1:4] = time_slider = Slider(fig; startvalue=o.t_obs[], range=(1:length(DG.tspan(o))), horizontal=true)
+    layout[2, 5] = time_display = Textbox(fig; stored_string=string(first(DG.tspan(o))))
 
     on(o.t_obs) do f
         time_display.displayed_string[] = string(DG.tspan(o)[f])
@@ -377,7 +431,7 @@ function _makerange(bounds::Nothing, val::Int)
 end
 _makerange(bounds, val) = error("Can't make a range from Param bounds of $val")
 
-function _in_columns(grid, objects, ncolumns, objpercol)
+function _in_columns(layout, objects, ncolumns, objpercol)
     nobjects = length(objects)
     nobjects == 0 && return hbox()
 
@@ -387,7 +441,7 @@ function _in_columns(grid, objects, ncolumns, objpercol)
     npercol = (nobjects - 1) ÷ ncolumns + 1
     cols = collect(objects[(npercol * (i - 1) + 1):min(nobjects, npercol * i)] for i in 1:ncolumns)
     for (i, col) in enumerate(cols)
-        colgrid = GridLayout(grid[i, 1])
+        collayout = GridLayout(layout[i, 1])
         for slider in col
 
         end
