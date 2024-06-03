@@ -18,10 +18,15 @@ end
         i, true
     end
 end
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
+@inline function DG._inbounds(::Reflect, size::Number, i::Number)
+    if i < oneunit(i)
+        return 2 - i, true
+    elseif i > size
+        return 2*size - i, true
+    else
+        return i, true
+    end
+end
 
 # See interface docs
 @inline isinbounds(data::Union{GridData,AbstractSimData}, I::Tuple) = isinbounds(data, I...)
