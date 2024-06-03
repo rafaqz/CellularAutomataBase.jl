@@ -18,6 +18,10 @@ end
         i, true
     end
 end
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 
 # See interface docs
 @inline isinbounds(data::Union{GridData,AbstractSimData}, I::Tuple) = isinbounds(data, I...)
