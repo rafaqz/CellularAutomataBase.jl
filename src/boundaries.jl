@@ -18,7 +18,10 @@ end
         i, true
     end
 end
-@inline function DG._inbounds(::Reflect, size::Number, i::Number)
+
+using Stencils
+using Stencils: Reflect
+@inline function _inbounds(::Reflect, size::Number, i::Number)
     if i < oneunit(i)
         return 2 - i, true
     elseif i > size

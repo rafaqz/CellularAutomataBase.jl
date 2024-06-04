@@ -19,6 +19,12 @@ using DynamicGrids: inbounds, isinbounds, _inbounds, _isinbounds,
         @test _inbounds(Wrap(), (10, 10),  22, 0) == ((2, 10), true)
         @test _inbounds(Wrap(), (10, 10), -22, 0) == ((8, 10), true)
     end
+    @testset "inbounds with Reflect() returns new index and true for an out of bounds index" begin
+        @test _inbounds(Reflect(), (10, 10),  -2, 3) == ((4, 3), true)
+        @test _inbounds(Reflect(), (10, 10),   2, 0) == ((2, 2), true)
+        @test _inbounds(Reflect(), (10, 10),  12, 0) == ((8, 2), true)
+        @test _inbounds(Reflect(), (10, 10), -22, 0) == ((24, 2), true)
+    end
     @testset "isinbounds" begin
         @test _isinbounds((4, 5), 4, 5) == true
         @test _isinbounds((2, 3), 200, 300) == false
@@ -34,6 +40,10 @@ using DynamicGrids: inbounds, isinbounds, _inbounds, _isinbounds,
         @test inbounds(sd_wrap, 5, 5) == ((5, 5), true)
         @test inbounds(sd_wrap, 12, 5) == ((2, 5), true)
         @test inbounds(first(sd_wrap), 12, 5) == ((2, 5), true)
+        sd_reflect = SimData(output.extent, Ruleset(; boundary=Reflect()))
+        @test inbounds(sd_reflect, 5, 5) == ((5, 5), true)
+        @test inbounds(sd_reflect, 12, 5) == ((8, 5), true)
+        @test inbounds(first(sd_reflect), 12, 5) == ((8, 5), true)
     end
 end
 
