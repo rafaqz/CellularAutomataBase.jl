@@ -13,7 +13,7 @@ or [`NeighborhoodRule`](@ref) followed by [`CellRule`](@ref).
 
 ![Chain rule diagram](https://raw.githubusercontent.com/cesaraustralia/DynamicGrids.jl/media/Chain.png)
 """
-struct Chain{R,W,T<:Tuple{Vararg{<:ReturnRule}}} <: MultiRuleWrapper{R,W}
+struct Chain{R,W,T<:Tuple{Vararg{ReturnRule}}} <: MultiRuleWrapper{R,W}
     rules::T
 end
 Chain(rules...) = Chain(rules)

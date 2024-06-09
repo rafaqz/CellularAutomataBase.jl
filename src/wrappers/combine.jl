@@ -15,14 +15,14 @@ struct Combine{R,W,F,RL} <: MultiRuleWrapper{R,W}
     f::F
     rules::RL
 end
-function Combine(f, rules::Tuple{Vararg{<:ReturnRule}})
+function Combine(f, rules::Tuple{Vararg{ReturnRule}})
     wkeys = Tuple{union(map(k -> _asiterable(_writekeys(k)), rules)...)...} 
     rkeys = Tuple{union(map(k -> _asiterable(_readkeys(k)), rules)...)...}
     Combine{rkeys,wkeys,typeof(f),typeof(rules)}(f, rules)
 end
 Combine(f, rules::ReturnRule...) = Combine(f, rules)
 Combine(rules::ReturnRule...) = Combine(identity, rules)
-Combine(rules::Tuple{Vararg{<:ReturnRule}}) = Combine(identity, rules)
+Combine(rules::Tuple{Vararg{ReturnRule}}) = Combine(identity, rules)
 
 function applyrule(data::AbstractSimData, combinedrule::Combine{R,W}, state, I) where {R,W}
     writestates = map(rules(combinedrule)) do rule

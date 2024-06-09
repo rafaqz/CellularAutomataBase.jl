@@ -47,7 +47,7 @@ function map_with_optimisation(
     B = 2R
     status = sourcestatus(grid)
     let f=f, proc=proc, status=status
-        map_on_processor(proc, 1:_indtoblock(X+R, B)) do bj
+        map_on_processor(proc, simdata, 1:_indtoblock(X+R, B)) do bj
             for  bi in 1:_indtoblock(Y+R, B)
                 status[bi, bj] || continue
                 # Convert from padded block to init dimensions

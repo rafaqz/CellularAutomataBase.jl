@@ -147,13 +147,13 @@ function ConstructionBase.constructorof(::Type{T}) where T<:Rule{R,W} where {R,W
 end
 
 # Find the largest radius present in the passed in rules.
-function radius(rules::Tuple{Vararg{<:Rule}})
+function radius(rules::Tuple{Vararg{Rule}})
     allkeys = Tuple(union(map(keys, rules)...))
     maxradii = Tuple(radius(rules, key) for key in allkeys)
     return NamedTuple{allkeys}(maxradii)
 end
 # Get radius of specific key from all rules
-radius(rules::Tuple{Vararg{<:Rule}}, key::Symbol) =
+radius(rules::Tuple{Vararg{Rule}}, key::Symbol) =
     reduce(max, radius(ru) for ru in rules if key in keys(ru); init=0)
 
 radius(rule::Rule, args...) = 0

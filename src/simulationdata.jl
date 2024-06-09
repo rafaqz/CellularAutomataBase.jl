@@ -106,7 +106,7 @@ Additional methods not found in [`AbstractSimData`](@ref):
 - `rules(d::SimData)` : get the simulation rules.
 - `ruleset(d::SimData)` : get the simulation [`AbstractRuleset`](@ref).
 """
-struct SimData{S<:Tuple,N,G<:NamedTuple{<:Any,<:Tuple{<:GridData,Vararg{<:GridData}}},E,RS,F,CF,AF} <: AbstractSimData{S,N,G}
+struct SimData{S<:Tuple,N,G<:NamedTuple{<:Any,<:Tuple{<:GridData,Vararg{GridData}}},E,RS,F,CF,AF} <: AbstractSimData{S,N,G}
     grids::G
     extent::E
     ruleset::RS

@@ -1,12 +1,6 @@
 using DynamicGrids, Aqua, SafeTestsets
 
-Aqua.test_ambiguities([AbstractNumbers, Base, Core]; exclude=[(==)])
-Aqua.test_unbound_args(AbstractNumbers)
-Aqua.test_undefined_exports(AbstractNumbers)
-Aqua.test_project_extras(AbstractNumbers)
-Aqua.test_stale_deps(AbstractNumbers)
-Aqua.test_deps_compat(AbstractNumbers)
-
+Aqua.test_all(DynamicGrids; ambiguities=false)
 
 @time @safetestset "generated" begin include("generated.jl") end
 @time @safetestset "rules" begin include("rules.jl") end

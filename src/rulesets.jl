@@ -55,7 +55,7 @@ Rules will be run in the order they are passed, ie. `Ruleset(rule1, rule2, rule3
 mutable struct Ruleset{S} <: AbstractRuleset
     # Rules in Ruleset are intentionally not type-stable.
     # But they are when rebuilt in a StaticRuleset later
-    rules::Tuple{Vararg{<:Rule}}
+    rules::Tuple{Vararg{Rule}}
     settings::S
 end
 Ruleset(rule1, rules::Rule...; kw...) = Ruleset((rule1, rules...); kw...)

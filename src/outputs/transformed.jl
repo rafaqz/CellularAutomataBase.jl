@@ -27,16 +27,24 @@ mutable struct TransformedOutput{T,A<:AbstractVector{T},E,F,B} <: Output{T,A}
     f::F
     buffer::B
 end
-function TransformedOutput(f::Function, init::Union{NamedTuple,AbstractMatrix}; extent=nothing, kw...)
+function TransformedOutput(f::Function, init::Union{NamedTuple,AbstractMatrix}; extent=nothing, tspan, kw...)
     # We have to handle some things manually as we are changing the standard output frames
-    extent = extent isa Nothing ? Extent(; init=init, kw...) : extent
+    extent = extent isa Nothing ? Extent(; init=init, tspan, kw...) : extent
     # Define buffers to copy to before applying `f`
     buffer = _replicate_init(init, replicates(extent))
+    f1 = deepcopy(f(buffer))
+    if buffer isa NamedTuple
+        map(buffer) do b
+            b .= zero(first(b))
+        end
+    else
+        buffer .= zero(first(buffer))
+    end
     zeroframe = f(buffer)
     # Build simulation frames from the output of `f` for empty frames
-    frames = [deepcopy(zeroframe) for f in eachindex(tspan(extent))]
+    frames = [deepcopy(zeroframe) for _ in eachindex(tspan)]
     # Set the first frame to the output of `f` for `init`
-    frames[1] = f(buffer)
+    frames[1] = f1
 
     return TransformedOutput(frames, false, extent, f, buffer)
 end
