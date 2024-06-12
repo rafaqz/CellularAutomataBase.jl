@@ -28,6 +28,7 @@ BoundaryCondition
 Wrap
 Remove
 Ignore
+Reflect
 ```
 
 ### Hardware selection

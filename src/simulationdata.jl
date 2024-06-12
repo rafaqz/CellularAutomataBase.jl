@@ -30,7 +30,7 @@ if they are a `Matrix`.
     adding a `Symbol` or `Val{:symbol}` argument will get a field of aux.
 - `tspan(data)`: get the simulation time span, an `AbstractRange`.
 - `timestep(data)`: get the simulaiton time step.
-- `boundary(data)` : returns the [`BoundaryCondition`](@ref) - `Remove` or `Wrap`.
+- `boundary(data)` : returns the [`BoundaryCondition`](@ref) - `Remove`, `Wrap` or `Reflect`.
 - `padding(data)` : returns the value to use as grid border padding.
 
 These are also available, but you probably shouldn't use them and their behaviour
@@ -207,6 +207,7 @@ end
 _update_padval(::Wrap, padval) = Wrap()
 _update_padval(::Remove, padval) = Remove(padval)
 _update_padval(::Use, padval) = Use()
+_update_padval(::Reflect, padval) = Reflect()
 
 ConstructionBase.constructorof(::Type{<:SimData{S,N}}) where {S,N} = SimData{S,N}
 
