@@ -35,10 +35,10 @@ function TransformedOutput(f::Function, init::Union{NamedTuple,AbstractMatrix}; 
     f1 = deepcopy(f(buffer))
     if buffer isa NamedTuple
         map(buffer) do b
-            b .= zero(first(b))
+            b .= (zero(first(b)),)
         end
     else
-        buffer .= zero(first(buffer))
+        buffer .= (zero(first(buffer)),)
     end
     zeroframe = f(buffer)
     # Build simulation frames from the output of `f` for empty frames
