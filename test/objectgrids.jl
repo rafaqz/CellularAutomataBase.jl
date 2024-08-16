@@ -205,3 +205,10 @@ end
          a02 a02 a02 a02 a02 a04 a04 a04 a04 a04
          a02 a02 a02 a02 a02 a04 a04 a04 a04 a04]
 end
+
+@testset "objects must be isbits" begin
+    @test_throws ArgumentError ArrayOutput((grid1 = fill([1.0, 2.0], 5, 5),); tspan=1:3)
+    @test_throws ArgumentError ArrayOutput((grid1=fill(1, 5, 5), grid2=fill([1.0, 2.0], 5, 5),); tspan=1:3)
+    @test_throws ArgumentError ArrayOutput(fill(Ref(1), 5, 5); tspan=1:3)
+    @test_throws ArgumentError TransformedOutput(identity, fill(Ref(1), 5, 5); tspan=1:3)
+end
