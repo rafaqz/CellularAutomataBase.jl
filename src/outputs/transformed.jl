@@ -28,6 +28,7 @@ mutable struct TransformedOutput{T,A<:AbstractVector{T},E,F,B} <: Output{T,A}
     buffer::B
 end
 function TransformedOutput(f::Function, init::Union{NamedTuple,AbstractMatrix}; extent=nothing, tspan, kw...)
+    _check_grids_are_isbits(init)
     # We have to handle some things manually as we are changing the standard output frames
     extent = extent isa Nothing ? Extent(; init=init, tspan, kw...) : extent
     # Define buffers to copy to before applying `f`

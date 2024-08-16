@@ -16,9 +16,16 @@ abstract type Output{T,A} <: AbstractDimArray{T,1,Tuple{Ti},A} end
 function (::Type{T})(
     init::Union{NamedTuple,AbstractArray}; extent=nothing, kw...
 ) where T <: Output
+    _check_grids_are_isbits(init)
     extent = extent isa Nothing ? Extent(; init=init, kw...) : extent
     frames = [_replicate_init(init, replicates(extent))]
     T(; frames, running=false, extent=extent, kw...)
+end
+
+_check_grids_are_isbits(init::NamedTuple) = map(_check_grids_are_isbits, init)
+function _check_grids_are_isbits(::AbstractArray{T}) where T
+    isbitstype(T) || throw(ArgumentError("init values must be `isbits(x) = true`. Got objects of type $T. Make sure all arrays are from StaticArrays.jl and no objects are mutable."))
+    return nothing
 end
 
 function Base.summary(io::IO, A::Output)
