@@ -30,7 +30,7 @@ Theses are the taken from the `ruleset` argument by default:
     KernelAbstractions.jl and a CUDA gpu is available. 
 - `opt`: a [`PerformanceOpt`](@ref) to specificy optimisations like
     [`SparseOpt`](@ref) or [`NoOpt`](@ref). Defaults to `NoOpt()`.
-- `boundary`: what to do with boundary of grid edges.  Options are [`Remove`](@ref) or [`Wrap`](@ref), defaulting to `Remove()`.
+- `boundary`: what to do with boundary of grid edges.  Options are [`Remove`](@ref), [`Wrap`](@ref) or [`Reflect`](@ref), defaulting to `Remove()`.
 - `cellsize`: the size of cells, which may be accessed by rules.
 - `timestep`: fixed timestep where this is required for some rules.
     eg. `Month(1)` or `1u"s"`.

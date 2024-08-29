@@ -166,6 +166,9 @@ to skip coordinates that boundary outside of the grid.
 
 [`Wrap`](@ref) returns a tuple with the current position or it's
 wrapped equivalent, and `true` as it is allways in-bounds.
+
+[`Reflect`](@ref) returns a tuple with the current position or it's
+reflected equivalent, and `true` as it is allways in-bounds.
 """
 function inbounds end
 
