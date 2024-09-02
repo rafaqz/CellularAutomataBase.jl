@@ -289,7 +289,7 @@ setneighbors_rule = let prob_combustion=0.0001, prob_regrowth=0.01
                 data[I...] = ALIVE
             end
         elseif cell == BURNING
-            for pos in positions(neighborhood, I)
+            for pos in indices(neighborhood, I)
                 if data[pos...] == ALIVE
                     data[pos...] = BURNING
                 end
@@ -368,7 +368,7 @@ setneighbors_gpu = let prob_combustion=0.0001, prob_regrowth=0.01
                 data[:ff][I...] = ALIVE
             end
         elseif cell == BURNING
-            for pos in positions(neighborhood, I)
+            for pos in indices(neighborhood, I)
                 if data[:ff][pos...] == ALIVE
                     data[:ff][pos...] = BURNING
                 end

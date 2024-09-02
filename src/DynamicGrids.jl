@@ -102,6 +102,8 @@ import Stencils: neighbors, unsafe_neighbors, stencil,
 
 import Stencils: BoundaryCondition, Padding
 
+@deprecate positions Stencils.indices
+
 include("interface.jl")
 include("flags.jl")
 include("rules.jl")
