@@ -45,10 +45,7 @@ for f in (:plot!, :heatmap!, :image!, :contour!)
         if x.frame isa Observable
             Makie.$f(axis, x.frame; kw...)
         else
-            A = lift(x.frame) do f
-                first(f)
-            end
-            Makie.$f(axis, A; kw...)
+            Makie.$f(axis, first(x.frame); kw...)
         end
     end
 end
@@ -186,10 +183,10 @@ function DynamicGrids.MakieOutput(;
 
     # Set up plot with the first frame
     if keys(simdata) == (:_default_,)
-        frame_obs[] = DynamicGrids.gridview(first(DynamicGrids.grids(simdata)))
+        frame_obs[] = DynamicGrids.maybe_rebuild_grid(first(init(extent)), first(DynamicGrids.grids(simdata)))
     else
-        map(frame_obs, DynamicGrids.grids(simdata)) do obs, grid
-            obs[] = DynamicGrids.gridview(grid)
+        map(frame_obs, DynamicGrids.grids(simdata), DynamicGrids.init(extent)) do obs, grid, init
+            obs[] = map(DynamicGrids.maybe_rebuild_grid, init, grid)
         end
     end
 
@@ -206,18 +203,13 @@ DynamicGrids.isasync(o::MakieOutput) = true
 DynamicGrids.ruleset(o::MakieOutput) = o.ruleset
 function DynamicGrids.showframe(frame::NamedTuple, o::MakieOutput, data)
     # Update simulation image, makeing sure any errors are printed in the REPL
-    try
-        if keys(frame) == (:_default_,)
-            o.frame_obs[] = first(frame)
-        else
-            map(setindex!, o.frame_obs, frame)
-        end
-        o.t_obs[] = DG.currentframe(data)
-        notify(o.t_obs)
-    catch e
-        show(stdout, MIME"text/plain", e)
-        DynamicGrids.setrunning!(o, false)
+    if keys(frame) == (:_default_,)
+        o.frame_obs[] = first(frame)
+    else
+        map(setindex!, o.frame_obs, frame)
     end
+    o.t_obs[] = DG.currentframe(data)
+    notify(o.t_obs)
     return nothing
 end
 
@@ -252,7 +244,6 @@ function attach_sliders!(fig, model::AbstractModel;
 end
 
 function param_sliders!(fig, model::AbstractModel; layout=fig, ncolumns, slider_kw=(;))
-    @show DynamicGrids.params(model) ncolumns
     length(DynamicGrids.params(model)) == 0 && return nothing, nothing
 
     model1 = Model(parent(model))
@@ -277,7 +268,6 @@ function param_sliders!(fig, model::AbstractModel; layout=fig, ncolumns, slider_
     else
         map(x -> "", values)
     end
-    @show values labels
     # TODO Set mouse hover text
     # attributes = map(model[:component], labels, descriptions) do p, n, d
     #     desc = d == "" ? "" : string(": ", d)
@@ -296,7 +286,6 @@ function param_sliders!(fig, model::AbstractModel; layout=fig, ncolumns, slider_
             e = min(b + colsize - 1, nsliders)   
             b:e
         end
-        @show nsliders colsize ranges
         obs = mapreduce(vcat, enumerate(ranges)) do (i, r)
             col_slider_vals = map(x -> x[r], slider_vals)
             _, col_obs = _param_sliders!(fig, i; layout=inner_layout, slider_kw, col_slider_vals...)
@@ -342,7 +331,7 @@ function _add_control_widgets!(
     layout[1, 4] = fps_slider = Slider(fig; range=1:200, startvalue=DynamicGrids.fps(o))
     layout[1, 5] = init_dropdown = Menu(fig; options=Tuple.(collect(pairs(extrainit))), prompt="Choose init...")
     layout[2, 1:4] = time_slider = Slider(fig; startvalue=o.t_obs[], range=(1:length(DG.tspan(o))), horizontal=true)
-    layout[2, 5] = time_display = Textbox(fig; stored_string=string(first(DG.tspan(o))))
+    layout[2, 5] = time_display = Textbox(fig; tellwidth=false, halign=:left, stored_string=string(first(DG.tspan(o))))
 
     on(o.t_obs) do f
         time_display.displayed_string[] = string(DG.tspan(o)[f])
@@ -353,47 +342,27 @@ function _add_control_widgets!(
             @info "there is already a simulation running"
             return nothing
         end
-        try
-            Base.invokelatest() do
-                sim!(o, ruleset; init=init_dropdown.selection[], sim_kw...)
-            end
-        catch e
-            println(stdout, e)
+        Base.invokelatest() do
+            sim!(o, ruleset; init=init_dropdown.selection[], sim_kw...)
         end
     end
     on(resume.clicks) do _
-        try
-            !DG.isrunning(o) && resume!(o, ruleset; tstop=last(DG.tspan(o)))
-        catch e
-            println(e)
-        end
+        !DG.isrunning(o) && resume!(o, ruleset; tstop=last(DG.tspan(o)))
     end
     on(stop.clicks) do _
-        try
-            DG.setrunning!(o, false)
-        catch e
-            println(stdout, e)
-        end
+        DG.setrunning!(o, false)
     end
     on(fps_slider.value) do fps
-        try
-            DG.setfps!(o, fps)
-            DG.settimestamp!(o, o.t_obs[])
-        catch e
-            println(stdout, e)
-        end
+        DG.setfps!(o, fps)
+        DG.settimestamp!(o, o.t_obs[])
     end
     on(time_slider.value) do val
-        try
-            if val < o.t_obs[]
-                println(stdout, "resetting time...")
-                DG.setrunning!(o, false)
-                sleep(0.1)
-                DG.setstoppedframe!(output, val)
-                DG.resume!(o; tstop=last(DG.tspan(o)))
-            end
-        catch e
-            println(stdout, e)
+        if val < o.t_obs[]
+            println(stdout, "resetting time...")
+            DG.setrunning!(o, false)
+            sleep(0.1)
+            DG.setstoppedframe!(output, val)
+            DG.resume!(o; tstop=last(DG.tspan(o)))
         end
     end
 

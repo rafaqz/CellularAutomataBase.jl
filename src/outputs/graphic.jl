@@ -137,7 +137,7 @@ function storeframe!(o::GraphicOutput, data)
     if isstored(o)
         _storeframe!(o, eltype(o), data)
     end
-    if isshowable(o, currentframe(data)) 
+    if isshowable(o, currentframe(data))
         showframe(o, data)
     end
     return nothing
@@ -157,10 +157,23 @@ end
 
 # Additional interface for GraphicOutput
 
-showframe(o::GraphicOutput, data) = showframe(o, proc(data), data)
-showframe(o::GraphicOutput, ::Processor, data) = showframe(map(gridview, grids(data)), o, data)
+function showframe(o::GraphicOutput, data) 
+    showframe(o, proc(data), data)
+end
+function showframe(o::GraphicOutput, ::Processor, data)
+    frame = map(maybe_rebuild_grid, init(o), grids(data))
+    showframe(frame, o, data)
+end
 # Handle NamedTuple for outputs that only accept AbstractArray
 showframe(frame::NamedTuple, o::GraphicOutput, data) = showframe(first(frame), o, data)
+
+function maybe_rebuild_grid(a, b)
+    if a isa AbstractDimArray 
+        b isa AbstractDimArray ? rebuild(a, parent(b)) : rebuild(a, b) 
+    else
+        b
+    end
+end
 
 initalisegraphics(o::GraphicOutput, data) = nothing
 finalisegraphics(o::GraphicOutput, data) = showframe(o, data)
