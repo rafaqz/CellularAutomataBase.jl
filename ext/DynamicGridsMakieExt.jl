@@ -361,7 +361,7 @@ function _add_control_widgets!(
             println(stdout, "resetting time...")
             DG.setrunning!(o, false)
             sleep(0.1)
-            DG.setstoppedframe!(output, val)
+            DG.setstoppedframe!(o, val)
             DG.resume!(o; tstop=last(DG.tspan(o)))
         end
     end
