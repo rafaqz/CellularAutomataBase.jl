@@ -56,7 +56,14 @@ end
     MakieOutput(init; tspan, kw...)
     MakieOutput(f, init; tspan, kw...)
 
-An output that is displayed using Makie.jl.
+An output that is displayed using Makie.jl, providing transport
+controls for the simulation and a layout you can plot into.
+
+If `ModelParameters.Param` wrappers are used anywhere in the `Ruleset`
+they will appear as sliders, and control the rules during the simulation.
+
+If `stored=true` you can jump back through the simulation using the 
+timeline slider.
 
 # Arguments:
 
@@ -80,14 +87,13 @@ An output that is displayed using Makie.jl.
 - `inputlayout`: a makie layout to hold controls `GridLayout(fig[5, 1])` by default.
 - `sim_kw`: keywords to pass to `sim!`.
 - `ncolumns`: the number of columns to split sliders into.
-$(DynamicGrids.GRAPHICOUTPUT_KEYWORDS)
+$(DG.GRAPHICOUTPUT_KEYWORDS)
 
 life = Life()
 output = MakieOutput(rand(Bool, 200, 300); tspan=1:10, ruleset=Ruleset(life)) do (; layout, frame, time)
     axis = Axis(layout[1, 1])
     image!(axis, frame; interpolate=false)
 end
-
 
 # Example
 
@@ -136,7 +142,7 @@ function DynamicGrids.MakieOutput(f::Function, init::Union{NamedTuple,AbstractAr
     return MakieOutput(; frames, running=false, extent, store, f, kw...)
 end
 DynamicGrids.MakieOutput(init::Union{NamedTuple,AbstractArray}; kw...) =
-    DynamicGrids.MakieOutput(Makie.plot!, init; kw...)
+    DG.MakieOutput(Makie.plot!, init; kw...)
 # Most defaults are passed in from the generic ImageOutput constructor
 function DynamicGrids.MakieOutput(;
     frames, running, extent, ruleset,
@@ -154,7 +160,7 @@ function DynamicGrids.MakieOutput(;
     kw...
 )
     graphicconfig = if isnothing(graphicconfig)
-        DynamicGrids.GraphicConfig(; kw...)
+        DG.GraphicConfig(; kw...)
     end
     # Observables that update during the simulation
     t_obs = Observable{Int}(1)
@@ -171,7 +177,7 @@ function DynamicGrids.MakieOutput(;
         frames, running, extent, graphicconfig, ruleset, figure, nothing, frame_obs, t_obs
     )
     # TODO fix this hack
-    simdata = DynamicGrids.SimData(simdata, output, extent, ruleset)
+    simdata = DG.SimData(simdata, output, extent, ruleset)
 
     # Widgets
     controllayout = GridLayout(inputlayout[1, 1])
@@ -183,10 +189,10 @@ function DynamicGrids.MakieOutput(;
 
     # Set up plot with the first frame
     if keys(simdata) == (:_default_,)
-        frame_obs[] = DynamicGrids.maybe_rebuild_grid(first(init(extent)), first(DynamicGrids.grids(simdata)))
+        frame_obs[] = DG.maybe_rebuild_grid(first(DG.init(extent)), first(DG.grids(simdata)))
     else
-        map(frame_obs, DynamicGrids.grids(simdata), DynamicGrids.init(extent)) do obs, grid, init
-            obs[] = map(DynamicGrids.maybe_rebuild_grid, init, grid)
+        map(frame_obs, DG.grids(simdata), DG.init(extent)) do obs, grid, init
+            obs[] = map(DG.maybe_rebuild_grid, init, grid)
         end
     end
 
@@ -222,7 +228,7 @@ end
 function attach_sliders!(fig, model::AbstractModel;
     ncolumns, slider_kw=(;), layout=GridLayout(fig[2, 1]),
 )
-    length(DynamicGrids.params(model)) == 0 && return
+    length(DG.params(model)) == 0 && return
 
     sliderlayout, slider_obs = param_sliders!(fig, model; layout, slider_kw, ncolumns)
 
@@ -244,7 +250,7 @@ function attach_sliders!(fig, model::AbstractModel;
 end
 
 function param_sliders!(fig, model::AbstractModel; layout=fig, ncolumns, slider_kw=(;))
-    length(DynamicGrids.params(model)) == 0 && return nothing, nothing
+    length(DG.params(model)) == 0 && return nothing, nothing
 
     model1 = Model(parent(model))
 
@@ -322,13 +328,13 @@ function _add_control_widgets!(
 )
     # We use the init dropdown for the simulation init, 
     # even if we don't show the dropdown because it only has 1 option.
-    extrainit[:init] = deepcopy(DynamicGrids.init(o))
+    extrainit[:init] = deepcopy(DG.init(o))
 
     # Buttons
     layout[1, 1] = sim = Button(fig; label="sim")
     layout[1, 2] = resume = Button(fig; label="resume")
     layout[1, 3] = stop = Button(fig; label="stop")
-    layout[1, 4] = fps_slider = Slider(fig; range=1:200, startvalue=DynamicGrids.fps(o))
+    layout[1, 4] = fps_slider = Slider(fig; range=1:200, startvalue=DG.fps(o))
     layout[1, 5] = init_dropdown = Menu(fig; options=Tuple.(collect(pairs(extrainit))), prompt="Choose init...")
     layout[2, 1:4] = time_slider = Slider(fig; startvalue=o.t_obs[], range=(1:length(DG.tspan(o))), horizontal=true)
     layout[2, 5] = time_display = Textbox(fig; tellwidth=false, halign=:left, stored_string=string(first(DG.tspan(o))))
@@ -356,13 +362,15 @@ function _add_control_widgets!(
         DG.setfps!(o, fps)
         DG.settimestamp!(o, o.t_obs[])
     end
-    on(time_slider.value) do val
-        if val < o.t_obs[]
-            println(stdout, "resetting time...")
-            DG.setrunning!(o, false)
-            sleep(0.1)
-            DG.setstoppedframe!(o, val)
-            DG.resume!(o; tstop=last(DG.tspan(o)))
+    if DG.isstored(o)
+        on(time_slider.value) do val
+            if val < o.t_obs[]
+                println(stdout, "resetting time...")
+                DG.setrunning!(o, false)
+                sleep(0.1)
+                DG.setstoppedframe!(o, val)
+                DG.resume!(o; tstop=last(DG.tspan(o)))
+            end
         end
     end
 
