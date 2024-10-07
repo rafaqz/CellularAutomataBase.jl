@@ -29,6 +29,8 @@ mutable struct TransformedOutput{T,F,A<:AbstractVector{T},E,B} <: Output{T,A}
     extent::E
     buffer::B
 end
+TransformedOutput{T}(f::Function, init::Union{NamedTuple,AbstractMatrix}; kw...) where T =
+    TransformedOutput(f, init; kw..., eltype=T)
 function TransformedOutput(f::Function, init::Union{NamedTuple,AbstractMatrix}; 
     extent=nothing, 
     eltype=nothing,
