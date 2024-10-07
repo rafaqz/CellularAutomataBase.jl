@@ -40,7 +40,7 @@ function TransformedOutput(f::Function, init::Union{NamedTuple,AbstractMatrix};
     extent = extent isa Nothing ? Extent(; init=init, tspan, kw...) : extent
     # Define buffers to copy to before applying `f`
     buffer = _replicate_init(init, replicates(extent))
-    f1 = deepcopy(f(buffer))
+    f1 = f(buffer)
     if buffer isa NamedTuple
         map(buffer) do b
             b .= (zero(first(b)),)
@@ -48,12 +48,11 @@ function TransformedOutput(f::Function, init::Union{NamedTuple,AbstractMatrix};
     else
         buffer .= (zero(first(buffer)),)
     end
-    zeroframe = f(buffer)
     # Build simulation frames from the output of `f` for empty frames
     frames = if isnothing(eltype)
-        [deepcopy(zeroframe) for _ in eachindex(tspan)]
+        [deepcopy(f1) for _ in eachindex(tspan)]
     else
-        eltype[deepcopy(zeroframe) for _ in eachindex(tspan)]
+        eltype[deepcopy(f1) for _ in eachindex(tspan)]
     end
     # Set the first frame to the output of `f` for `init`
     frames[1] = f1
