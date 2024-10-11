@@ -64,7 +64,7 @@ Test = "1"
 UnicodeGraphics = "0.2"
 Unitful = "1"
 WGLMakie = "0.9"
-julia = "1.9"
+julia = "1.10"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
