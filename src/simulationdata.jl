@@ -2,8 +2,8 @@
 """
     AbstractSimData
 
-Supertype for simulation data objects. Thes hold [`GridData`](@ref), 
-[`SimSettings`](@ref) and other objects needed to run the simulation, 
+Supertype for simulation data objects. Thes hold [`GridData`](@ref),
+[`SimSettings`](@ref) and other objects needed to run the simulation,
 and potentially required from within rules.
 
 An `AbstractSimData` object is accessable in [`applyrule`](@ref) as the first parameter.
@@ -19,7 +19,7 @@ funciton applyrule(data::AbstractSimData, rule::SomeRule{Tuple{A,B}},W}, (a, b),
 end
 ```
 
-In single-grid simulations `AbstractSimData` objects can be indexed directly as 
+In single-grid simulations `AbstractSimData` objects can be indexed directly as
 if they are a `Matrix`.
 
 ## Methods
@@ -34,7 +34,7 @@ if they are a `Matrix`.
 - `padding(data)` : returns the value to use as grid border padding.
 
 These are also available, but you probably shouldn't use them and their behaviour
-is not guaranteed in furture versions. Using them will also mean a rule is useful 
+is not guaranteed in furture versions. Using them will also mean a rule is useful
 only in specific contexts, which is discouraged.
 
 - `settings(data)`: get the simulaitons [`SimSettings`](@ref) object.
@@ -53,6 +53,8 @@ extent(d::AbstractSimData) = d.extent
 frames(d::AbstractSimData) = d.frames
 grids(d::AbstractSimData) = d.grids
 auxframe(d::AbstractSimData) = d.auxframe
+auxframe(d::AbstractSimData, key) = auxframe(d)[_unwrap(key)]
+maskframe(d::AbstractSimData) = d.maskframe
 currentframe(d::AbstractSimData) = d.currentframe
 
 # Forwarded to the Extent object
@@ -61,10 +63,24 @@ padval(d::AbstractSimData) = padval(extent(d))
 init(d::AbstractSimData) = init(extent(d))
 mask(d::AbstractSimData) = mask(extent(d))
 aux(d::AbstractSimData, args...) = aux(extent(d), args...)
-auxframe(d::AbstractSimData, key) = auxframe(d)[_unwrap(key)]
 tspan(d::AbstractSimData) = tspan(extent(d))
 timestep(d::AbstractSimData) = step(tspan(d))
 radius(d::AbstractSimData) = max(map(radius, grids(d))...)
+
+
+Base.@propagate_inbounds ismasked(sd::AbstractSimData, I...) =
+    ismasked(sd, mask(sd), I...)
+Base.@propagate_inbounds ismasked(::AbstractSimData, ::Nothing, I...) =
+    false
+Base.@propagate_inbounds ismasked(::AbstractSimData, mask::AbstractArray, I...) =
+    !mask[I...]
+Base.@propagate_inbounds function ismasked(sd::AbstractSimData, mask::AbstractDimArray, I...)
+    if hasdim(mask, Ti())
+        mask[I..., maskframe(sd)]
+    else
+        mask[I...]
+    end
+end
 
 # Calculated:
 # Get the current time for this frame
@@ -88,9 +104,11 @@ Base.size(d::AbstractSimData{S}) where S = Tuple(StaticArrays.Size(S))
 @propagate_inbounds Base.getindex(d::AbstractSimData, I...) = getindex(first(grids(d)), I...)
 
 # Uptate timestamp
-function _updatetime(simdata::AbstractSimData, f::Integer) 
+function _updatetime(simdata::AbstractSimData, f::Integer)
     @set! simdata.currentframe = f
-    @set simdata.auxframe = _calc_auxframe(simdata)
+    @set! simdata.auxframe = _calc_frame(aux(simdata))
+    @set! simdata.maskframe = _calc_frame(mask(simdata))
+    simdata
 end
 
 """
@@ -106,18 +124,19 @@ Additional methods not found in [`AbstractSimData`](@ref):
 - `rules(d::SimData)` : get the simulation rules.
 - `ruleset(d::SimData)` : get the simulation [`AbstractRuleset`](@ref).
 """
-struct SimData{S<:Tuple,N,G<:NamedTuple{<:Any,<:Tuple{<:GridData,Vararg{GridData}}},E,RS,F,CF,AF} <: AbstractSimData{S,N,G}
+struct SimData{S<:Tuple,N,G<:NamedTuple{<:Any,<:Tuple{<:GridData,Vararg{GridData}}},E,RS,F,CF,AF,MF} <: AbstractSimData{S,N,G}
     grids::G
     extent::E
     ruleset::RS
     frames::F
     currentframe::CF
     auxframe::AF
+    maskframe::MF
 end
 function SimData{S,N}(
-    grids::G, extent::E, ruleset::RS, frames::F, currentframe::CF, auxframe::AF
-) where {S,N,G,E,RS,F,CF,AF}
-    SimData{S,N,G,E,RS,F,CF,AF}(grids, extent, ruleset, frames, currentframe, auxframe)
+    grids::G, extent::E, ruleset::RS, frames::F, currentframe::CF, auxframe::AF, maskframe::MF
+) where {S,N,G,E,RS,F,CF,AF,MF}
+    SimData{S,N,G,E,RS,F,CF,AF,MF}(grids, extent, ruleset, frames, currentframe, auxframe, maskframe)
 end
 SimData(o, ruleset::AbstractRuleset) = SimData(o, extent(o), ruleset)
 SimData(o, r1::Rule, rs::Rule...) = SimData(o, extent(o), Ruleset(r1, rs...))
@@ -130,24 +149,24 @@ end
 function SimData(
     simdata::SimData, output, extent::AbstractExtent, ruleset::AbstractRuleset
 )
-    (replicates(simdata) == replicates(output) == replicates(extent)) || 
+    (replicates(simdata) == replicates(output) == replicates(extent)) ||
         throw(ArgumentError("`simdata` must have same numver of replicates as `output`"))
 
     @assert simdata.extent == StaticExtent(extent)
     @set! simdata.ruleset = StaticRuleset(ruleset)
-    if hasdelay(rules(ruleset)) 
+    if hasdelay(rules(ruleset))
         isstored(output) || _not_stored_delay_error()
-        @set! simdata.frames = frames(output) 
+        @set! simdata.frames = frames(output)
     end
     return simdata
 end
 
 function SimData(o, extent::AbstractExtent, ruleset::AbstractRuleset)
-    frames_ = if hasdelay(rules(ruleset)) 
+    frames_ = if hasdelay(rules(ruleset))
         isstored(o) || _notstorederror()
-        frames(o) 
+        frames(o)
     else
-        nothing 
+        nothing
     end
     return SimData(extent, ruleset, frames_)
 end
@@ -157,7 +176,7 @@ SimData(extent::AbstractExtent, rs::Tuple{<:Rule,Vararg}) = SimData(extent, Rule
 # Convert grids in extent to NamedTuple
 function SimData(extent::AbstractExtent, ruleset::AbstractRuleset, frames=nothing)
     nt_extent = _asnamedtuple(extent)
-    SimData(nt_extent, ruleset, frames) 
+    SimData(nt_extent, ruleset, frames)
 end
 function SimData(extent::AbstractExtent{<:NamedTuple}, ruleset::AbstractRuleset, frames=nothing)
     # Calculate the stencil array for each grid
@@ -168,13 +187,14 @@ end
 function SimData(
     grids::G, extent::AbstractExtent, ruleset::AbstractRuleset, frames
 ) where {G<:Union{<:NamedTuple{<:Any,<:Tuple{<:GridData,Vararg}},<:GridData}}
-    currentframe = 1; auxframe = nothing
+    currentframe = 1
+    auxframe = maskframe = nothing
     S = Tuple{size(extent)...}
     N = ndims(extent)
     # SimData is isbits-only, so use Static versions
     s_extent = StaticExtent(extent)
     s_ruleset = StaticRuleset(ruleset)
-    SimData{S,N}(grids, s_extent, s_ruleset, frames, currentframe, auxframe)
+    SimData{S,N}(grids, s_extent, s_ruleset, frames, currentframe, auxframe, maskframe)
 end
 
 # Build the grids for the simulation from the extent, ruleset, init and padding
@@ -190,7 +210,7 @@ function _buildgrids(extent, ruleset, s::Val, radii::NamedTuple)
     end
 end
 function _buildgrids(extent, ruleset, ::Val{S}, ::Val{R}, init, padval) where {S,R}
-    stencil = Window{R}() 
+    stencil = Window{R}()
     padding = Halo{:out}() # We always pad out in DynamicGrids - it should pay back for multiple time steps
     bc = _update_padval(boundary(ruleset), padval)
     data = _replicate_init(init, replicates(extent))
@@ -225,42 +245,44 @@ replicates(d::SimData) = replicates(extent(d))
 
     RuleData(extent::AbstractExtent, settings::SimSettings)
 
-[`AbstractSimData`](@ref) object that is passed to rules. 
+[`AbstractSimData`](@ref) object that is passed to rules.
 Basically a trimmed-down version of [`SimData`](@ref).
 
 The simplified object actually passed to rules with the current design.
 
 Passing a smaller object than `SimData` to rules leads to faster GPU compilation.
 """
-struct RuleData{S<:Tuple,N,G<:NamedTuple,E,Se,F,CF,AF,R,V,I} <: AbstractSimData{S,N,G}
+struct RuleData{S<:Tuple,N,G<:NamedTuple,E,Se,F,CF,AF,MF,R,V,I} <: AbstractSimData{S,N,G}
     grids::G
     extent::E
     settings::Se
     frames::F
     currentframe::CF
     auxframe::AF
+    maskframe::MF
     replicates::R
     value::V
     indices::I
 end
 function RuleData{S,N}(
-    grids::G, extent::E, settings::Se, frames::F, currentframe::CF, auxframe::AF, replicates::Re, value::V, indices::I
-) where {S,N,G,E,Se,F,CF,AF,Re,V,I}
-    RuleData{S,N,G,E,Se,F,CF,AF,Re,V,I}(grids, extent, settings, frames, currentframe, auxframe, replicates, value, indices)
+    grids::G, extent::E, settings::Se, frames::F, currentframe::CF, auxframe::AF, maskframe::MF, replicates::Re, value::V, indices::I
+) where {S,N,G,E,Se,F,CF,AF,MF,Re,V,I}
+    RuleData{S,N,G,E,Se,F,CF,AF,MF,Re,V,I}(grids, extent, settings, frames, currentframe, auxframe, maskframe, replicates, value, indices)
 end
 function RuleData(d::AbstractSimData{S,N};
-    grids=grids(d), 
-    extent=extent(d), 
+    grids=grids(d),
+    extent=extent(d),
     settings=settings(d),
-    frames=frames(d), 
-    currentframe=currentframe(d), 
-    auxframe=auxframe(d), 
+    frames=frames(d),
+    currentframe=currentframe(d),
+    auxframe=auxframe(d),
+    maskframe=maskframe(d),
     replicates=replicates(d),
-    value=nothing, 
+    value=nothing,
     indices=nothing,
 ) where {S,N}
     RuleData{S,N}(
-        grids, extent, settings, frames, currentframe, auxframe, replicates, value, indices
+        grids, extent, settings, frames, currentframe, auxframe, maskframe, replicates, value, indices
     )
 end
 # Thin down the aux data for just this rule.
@@ -283,7 +305,7 @@ function RuleData(d::AbstractSimData, rule::Rule)
     return RuleData(d; extent=rule_extent)
 end
 
-function Base.getindex(d::RuleData, key::Symbol) 
+function Base.getindex(d::RuleData, key::Symbol)
     grid = getindex(grids(d), key)
     @set grid.indices = d.indices
 end

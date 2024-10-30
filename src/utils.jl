@@ -47,7 +47,7 @@ end
         if rule isa SetGridRule
             return true
         else
-            _demo(m, RuleData(simdata), rule, Val{ruletype(rule)}())
+            _demo(m, RuleData(simdata, rule), rule, Val{ruletype(rule)}())
         end
     end |> all
 end
@@ -142,12 +142,6 @@ end
     error("Keys $K and $J do not match")
 @inline _samenamedtuple(init::NamedTuple{K}, x::Tuple) where K = NamedTuple{K}(x)
 @inline _samenamedtuple(init::NamedTuple, x) = map(_ -> x, init) 
-
-
-# Unwrap a Val or Val type to its internal value
-_unwrap(x) = x
-_unwrap(::Val{X}) where X = X
-_unwrap(::Type{<:Val{X}}) where X = X
 
 @inline _firstgrid(simdata, ::Val{K}) where K = simdata[K]
 @inline _firstgrid(simdata, ::Tuple{Val{K},Vararg}) where K = simdata[K]

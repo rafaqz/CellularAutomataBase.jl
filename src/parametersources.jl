@@ -94,7 +94,13 @@ end
 ) where {N1,N2}
     if hasdim(A, TimeDim)
         last(dims(A)) isa TimeDim || throw(ArgumentError("The time dimensions in aux data must be the last dimension"))
-        A[ntuple(i -> I[i], Val{N1-1}())..., auxframe(data, key)]
+        af = auxframe(data)
+        if !isnothing(af) && haskey(af, _unwrap(key))
+            A[ntuple(i -> I[i], Val{N1-1}())..., af[_unwrap(key)]]
+        else
+            # Catch static situations with no known auxframe
+            A[ntuple(i -> I[i], Val{N1-1}())..., 1]
+        end
     else
         A[ntuple(i -> I[i], Val{N1-1}())...]
     end
@@ -127,25 +133,24 @@ function boundscheck_aux(data::AbstractSimData, A::AbstractDimArray, key::Aux{Ke
     end
 end
 
-# _calc_auxframe
-# Calculate the frame to use in the aux data for this timestep.
+# _calc_frame
+# Calculate the frame to use in the aux or mask data for this timestep.
 # This uses the index of any AbstractDimArray, which must be a
 # matching type to the simulation tspan.
 # This is called from _updatetime in simulationdata.jl
-_calc_auxframe(data::AbstractSimData) = _calc_auxframe(aux(data), data)
-function _calc_auxframe(aux::NamedTuple{K}, data::AbstractSimData) where K
-    map((A, k) -> _calc_auxframe(A, data, k), aux, NamedTuple{K}(K))
+function _calc_frame(aux::NamedTuple{K}, data::AbstractSimData) where K
+    map((A, k) -> _calc_frame(A, data, k), aux, NamedTuple{K}(K))
 end
-function _calc_auxframe(A::AbstractDimArray, data, key)
+function _calc_frame(A::AbstractDimArray, data, key)
     hasdim(A, TimeDim) || return nothing
     timedim = dims(A, TimeDim)
     curtime = currenttime(data)
     if !hasselection(timedim, Contains(curtime)) 
         if lookup(timedim) isa Cyclic
             if sampling(timedim) isa Points
-                throw(ArgumentError("$(_no_valid_time(timedim,key, curtime)) Did you mean to use `Intervals` for the time dimension `sampling`? `Contains` on `Points` defaults to `At`, and must be exact."))
+                throw(ArgumentError("$(_no_valid_time(timedim, key, curtime)) Did you mean to use `Intervals` for the time dimension `sampling`? `Contains` on `Points` defaults to `At`, and must be exact."))
             else
-                throw(ArgumentError("$(_no_valid_time(timedim,key, curtime))"))
+                throw(ArgumentError("$(_no_valid_time(timedim, key, curtime))"))
             end
         elseif sampling(timedim) isa Points
             throw(ArgumentError("$(_no_valid_time(timedim,key, curtime)) Did you mean to use `Intervals` for the time dimension `sampling`? `Contains` on `Points` defaults to `At`, and must be exact."))
@@ -155,7 +160,7 @@ function _calc_auxframe(A::AbstractDimArray, data, key)
     end
     return DimensionalData.selectindices(timedim, Contains(curtime))
 end
-_calc_auxframe(args...) = nothing
+_calc_frame(args...) = nothing
 
 _no_valid_time(timedim, key, curtime) = "Time dimension over $(bounds(timedim)) of aux `$key` has no valid selection for `Contains($curtime)`."
 

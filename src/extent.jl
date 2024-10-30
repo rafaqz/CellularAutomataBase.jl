@@ -87,7 +87,13 @@ mutable struct Extent{I<:Union{AbstractArray,NamedTuple},
             gridsize = size(init)
         end
         if (mask !== nothing) && (size(mask) != gridsize)
-            throw(ArgumentError("`mask` size do not match `init`"))
+            if mask isa AbstractDimArray && hasdim(mask, Ti())
+                last(dims(mask)) isa Ti || throw(ArgumentError("Time dimension mus be the last dimension. Use `permutedims` on the mask first."))
+                m1 = view(mask, Ti(1))
+                size(m1) == gridsize || _masksize_error(size(m1), gridsize)
+            else
+                _masksize_error(size(mask), gridsize)
+            end
         end
         new{I,M,A,typeof(padval),R}(init, mask, aux, padval, replicates, tspan)
     end
@@ -95,6 +101,10 @@ end
 Extent(; init, mask=nothing, aux=nothing, padval=_padval(init), replicates=nothing, tspan, kw...) =
     Extent(init, mask, aux, padval, replicates, tspan)
 Extent(init::Union{AbstractArray,NamedTuple}; kw...) = Extent(; init, kw...)
+
+_masksize_error(masksize, gridsize) =
+    throw(ArgumentError("`mask` size $masksize do not match `init` size $gridsize"))
+
 
 settspan!(e::Extent, tspan) = e.tspan = tspan
 

@@ -1,3 +1,8 @@
+# _vals2syms => Union{Symbol,Tuple}
+# Must be at the top of the file for world age problems
+# Get symbols from a Val or Tuple type
+@inline _vals2syms(x::Type{<:Tuple}) = map(v -> _vals2syms(v), x.parameters)
+@inline _vals2syms(::Type{<:Val{X}}) where X = X
 
 # Low-level generated functions for working with grids
 
@@ -232,8 +237,3 @@ end
         NamedTuple{$allkeys,typeof(vals)}(vals)
     end
 end
-
-# _vals2syms => Union{Symbol,Tuple}
-# Get symbols from a Val or Tuple type
-@inline _vals2syms(x::Type{<:Tuple}) = map(v -> _vals2syms(v), x.parameters)
-@inline _vals2syms(::Type{<:Val{X}}) where X = X

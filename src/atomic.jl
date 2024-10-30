@@ -20,7 +20,6 @@ for (f, op) in ATOMIC_OPS
             I1 = add_halo(d, _maybe_complete_indices(d, I))
             @boundscheck checkbounds(dest(d), I1...)
             @inbounds _setoptindex!(d, x, I1...)
-            # @show I I1
             @inbounds dest(d)[I1...] = ($op)(dest(d)[I1...], x)
         end
     end

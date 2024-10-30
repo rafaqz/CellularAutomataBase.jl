@@ -213,10 +213,7 @@ end
     # dimension we hide the extra dimension from rules.
     I1 = _strip_replicates(data, I)
     # We skip the cell if there is a mask layer
-    m = mask(data)
-    if !isnothing(m)
-        m[I1...] || return nothing
-    end
+    ismasked(data, I1...) && return nothing
     # We read a value from the grid
     readval = _readcell(data, rkeys, I...)
     # Update the data object
@@ -230,10 +227,7 @@ end
 end
 @inline function cell_kernel!(data::RuleData, ::Val{<:SetRule}, rule, rkeys, wkeys, I...)
     I1 = _strip_replicates(data, I)
-    m = mask(data)
-    if !isnothing(m)
-        m[I1...] || return nothing
-    end
+    m = ismasked(data, I...) && return nothing
     readval = _readcell(data, rkeys, I...)
     data1 = ConstructionBase.setproperties(data, (value=readval, indices = I))
     # Rules will manually write to grids in `applyrule!`

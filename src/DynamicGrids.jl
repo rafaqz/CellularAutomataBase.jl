@@ -104,6 +104,21 @@ import Stencils: BoundaryCondition, Padding
 
 @deprecate positions Stencils.indices
 
+# Here so it can be used in @generated
+# _asiterable
+# Return some iterable value from a 
+# Symbol, Tuple or tuple type
+@inline _asiterable(x) = (x,)
+@inline _asiterable(x::Symbol) = (x,)
+@inline _asiterable(x::Type{<:Tuple}) = x.parameters
+@inline _asiterable(x::Tuple) = x
+@inline _asiterable(x::AbstractArray) = x
+
+# Unwrap a Val or Val type to its internal value
+_unwrap(x) = x
+_unwrap(::Val{X}) where X = X
+_unwrap(::Type{<:Val{X}}) where X = X
+
 include("interface.jl")
 include("flags.jl")
 include("rules.jl")
@@ -138,10 +153,10 @@ include("generated.jl")
 include("maprules.jl")
 include("boundaries.jl")
 include("sparseopt.jl")
-include("utils.jl")
 include("copyto.jl")
 include("life.jl")
 include("adapt.jl")
+include("utils.jl")
 include("show.jl")
 
 function __init__()
