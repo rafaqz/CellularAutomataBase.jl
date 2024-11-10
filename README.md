@@ -65,7 +65,7 @@ init[190] = true
 
 output = REPLOutput(init; tspan=1:200, fps=50, style=Braile(), color=:green)
 sim!(output, rule110)
-
+```
 *A one dimensional cellular automata displayed in the terminal line by line*
 
 
